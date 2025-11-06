@@ -68,7 +68,12 @@ Solution Planner::solve()
   OPEN.push_front(H_init);
 
   set_scatter();
-  set_pibt();
+  if (!USE_ILP)
+    set_pibt();
+  else
+    set_ilp(); // initialize ilp solver
+
+
 
   // search loop
   while (!OPEN.empty() && !is_expired(deadline)) {
@@ -207,44 +212,49 @@ Solution Planner::backtrack(HNode *H)
 
 bool Planner::set_new_config(HNode *H, LNode *L, Config &Q_to)
 {
-  // worker-id, time -> configuration
-  auto Q_cands = std::vector<Config>(PIBT_NUM, Config(N, nullptr));
-  auto f_vals = std::vector<int>(PIBT_NUM, INT_MAX);
+  if (!USE_ILP) {
+   // worker-id, time -> configuration
+    auto Q_cands = std::vector<Config>(PIBT_NUM, Config(N, nullptr));
+    auto f_vals = std::vector<int>(PIBT_NUM, INT_MAX);
 
-  // parallel
-  auto worker = [&](int k) {
-    // set constraints
-    for (auto d = 0; d < L->depth; ++d) Q_cands[k][L->who[d]] = L->where[d];
-    // PIBT
-    auto res = pibts[k]->set_new_config(H->C, Q_cands[k], H->order);
-    if (res)
-      f_vals[k] = get_edge_cost(H->C, Q_cands[k]) + heuristic->get(Q_cands[k]);
-  };
-  if (FLG_MULTI_THREAD && PIBT_NUM > 1) {
-    auto threads = std::vector<std::thread>();
-    for (auto k = 0; k < PIBT_NUM; ++k) threads.emplace_back(worker, k);
-    for (auto &th : threads) th.join();
-  } else {
-    for (auto k = 0; k < PIBT_NUM; ++k) worker(k);
-  }
-
-  // obtain the best score
-  auto min_f_val = INT_MAX;
-  auto min_f_val_idx = -1;
-  for (auto k = 0; k < PIBT_NUM; ++k) {
-    if (f_vals[k] < min_f_val) {
-      min_f_val = f_vals[k];
-      min_f_val_idx = k;
+    // parallel
+    auto worker = [&](int k) {
+      // set constraints
+      for (auto d = 0; d < L->depth; ++d) Q_cands[k][L->who[d]] = L->where[d];
+      // PIBT
+      auto res = pibts[k]->set_new_config(H->C, Q_cands[k], H->order);
+      if (res)
+        f_vals[k] = get_edge_cost(H->C, Q_cands[k]) + heuristic->get(Q_cands[k]);
+    };
+    if (FLG_MULTI_THREAD && PIBT_NUM > 1) {
+      auto threads = std::vector<std::thread>();
+      for (auto k = 0; k < PIBT_NUM; ++k) threads.emplace_back(worker, k);
+      for (auto &th : threads) th.join();
+    } else {
+      for (auto k = 0; k < PIBT_NUM; ++k) worker(k);
     }
+
+    // obtain the best score
+    auto min_f_val = INT_MAX;
+    auto min_f_val_idx = -1;
+    for (auto k = 0; k < PIBT_NUM; ++k) {
+      if (f_vals[k] < min_f_val) {
+        min_f_val = f_vals[k];
+        min_f_val_idx = k;
+      }
+    }
+
+    if (min_f_val < INT_MAX) {
+      auto &Q_win = Q_cands[min_f_val_idx];
+      std::copy(Q_win.begin(), Q_win.end(), Q_to.begin());
+      return true;
+    } else {
+      return false;
+    }   
+  } else {
+    // ILP based configuration generator
   }
 
-  if (min_f_val < INT_MAX) {
-    auto &Q_win = Q_cands[min_f_val_idx];
-    std::copy(Q_win.begin(), Q_win.end(), Q_to.begin());
-    return true;
-  } else {
-    return false;
-  }
 }
 
 void Planner::rewrite(HNode *H_from, HNode *H_to)
@@ -305,6 +315,14 @@ void Planner::set_pibt()
   for (auto k = 0; k < PIBT_NUM; ++k) {
     pibts.emplace_back(new PIBT(ins, D, k + seed, FLG_SWAP, scatter));
   }
+}
+
+/*
+  Initialize ILP solver for one step config generation
+*/
+void Planner::set_ilp()
+{
+  // TODO: implement this
 }
 
 void Planner::set_refiner()

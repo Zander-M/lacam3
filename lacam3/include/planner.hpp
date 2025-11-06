@@ -26,6 +26,7 @@
 #include "scatter.hpp"
 #include "translator.hpp"
 #include "utils.hpp"
+#include "ilp.hpp"
 
 struct Planner {
   const Instance *ins;
@@ -49,6 +50,7 @@ struct Planner {
 
   // configuration generator
   std::vector<PIBT *> pibts;
+  ILP* ilp;
 
   // for refiner
   int seed_refiner;
@@ -77,6 +79,7 @@ struct Planner {
   static bool FLG_RANDOM_INSERT_INIT_NODE;
   static float RECURSIVE_RATE;
   static double RECURSIVE_TIME_LIMIT;
+  static bool USE_ILP; // whether to use ILP low level configuration generator
 
   // for logging
   static int CHECKPOINTS_DURATION;
@@ -102,6 +105,7 @@ struct Planner {
   void apply_new_solution(const Solution &plan);
   void set_scatter();
   void set_pibt();
+  void set_ilp();
   void set_refiner();
   Solution get_refined_plan(const Solution &plan_origin);
   void update_checkpoints();

@@ -80,6 +80,10 @@ int main(int argc, char *argv[])
   program.add_argument("--checkpoints-duration")
       .help("for recording")
       .default_value(std::string("5"));
+  program.add_argument("--ilp")
+      .help("whether to use Integer Linear Programming as the configuration generator")
+      .default_value(false)
+      .implicit_value(true);
   try {
     program.parse_known_args(argc, argv);
   } catch (const std::runtime_error &err) {
@@ -131,6 +135,7 @@ int main(int argc, char *argv[])
           : std::stof(program.get<std::string>("recursive-time-limit")) * 1000;
   Planner::CHECKPOINTS_DURATION =
       std::stof(program.get<std::string>("checkpoints-duration")) * 1000;
+  Planner::USE_ILP = program.get<bool>("ilp");
 
   // solve
   const auto deadline = Deadline(time_limit_sec * 1000);
