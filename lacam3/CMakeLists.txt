@@ -9,26 +9,21 @@ target_include_directories(${PROJECT_NAME} INTERFACE ./include)
 find_package(Threads REQUIRED)
 target_link_libraries(${PROJECT_NAME} PUBLIC Threads::Threads)
 
-# Gurobi 
-find_package(gurobi)
-set(GUROBI_ROOT "/Library/gurobi1203/macos_universal2")
-# Find Gurobi package
+# Gurobi
+set(GUROBI_ROOT "/Library/gurobi1203/macos_universal2" CACHE PATH
+    "Gurobi installation root")
 find_library(GUROBI_LIBRARY
     NAMES gurobi gurobi120
     HINTS "${GUROBI_ROOT}/lib"
     REQUIRED
 )
-
 find_library(GUROBI_CXX_LIBRARY
     NAMES gurobi_c++
     HINTS "${GUROBI_ROOT}/lib"
     REQUIRED
 )
-# Include directories
-include_directories("${GUROBI_ROOT}/include")
-# Link libraries
-target_link_libraries(main 
+target_include_directories(${PROJECT_NAME} PUBLIC "${GUROBI_ROOT}/include")
+target_link_libraries(${PROJECT_NAME} PUBLIC
     ${GUROBI_LIBRARY}
     ${GUROBI_CXX_LIBRARY}
 )
-

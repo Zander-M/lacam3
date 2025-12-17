@@ -80,6 +80,7 @@ struct Planner {
   static float RECURSIVE_RATE;
   static double RECURSIVE_TIME_LIMIT;
   static bool USE_ILP; // whether to use ILP low level configuration generator
+  static bool ILP_LOG_TIMING; // whether to log ILP timing per call
 
   // for logging
   static int CHECKPOINTS_DURATION;

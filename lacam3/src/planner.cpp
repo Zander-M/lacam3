@@ -16,6 +16,8 @@ float Planner::RANDOM_INSERT_PROB2 = 0.01;
 bool Planner::FLG_RANDOM_INSERT_INIT_NODE = false;
 float Planner::RECURSIVE_RATE = 0.2;
 double Planner::RECURSIVE_TIME_LIMIT = 1000;
+bool Planner::USE_ILP = false;
+bool Planner::ILP_LOG_TIMING = false;
 
 std::string Planner::MSG;
 int Planner::CHECKPOINTS_DURATION = 5000;
@@ -37,6 +39,7 @@ Planner::Planner(const Instance *_ins, int _verbose, const Deadline *_deadline,
       delete_dist_table_after_used(_D == nullptr),
       heuristic(new Heuristic(ins, D)),
       scatter(nullptr),
+      ilp(nullptr),
       seed_refiner(0),
       refiner_pool(),
       OPEN(),
@@ -54,6 +57,7 @@ Planner::~Planner()
 {
   if (heuristic != nullptr) delete heuristic;
   if (scatter != nullptr) delete scatter;
+  if (ilp != nullptr) delete ilp;
   for (auto &pibt : pibts) delete pibt;
   if (delete_dist_table_after_used) delete D;
 }
@@ -253,6 +257,9 @@ bool Planner::set_new_config(HNode *H, LNode *L, Config &Q_to)
     }   
   } else {
     // ILP based configuration generator
+    if (ilp == nullptr) return false;
+    for (auto d = 0; d < L->depth; ++d) Q_to[L->who[d]] = L->where[d];
+    return ilp->set_new_config(H->C, Q_to);
   }
 
 }
@@ -322,7 +329,8 @@ void Planner::set_pibt()
 */
 void Planner::set_ilp()
 {
-  // TODO: implement this
+  if (ilp == nullptr) ilp = new ILP(ins, D);
+  ilp->log_timing = ILP_LOG_TIMING;
 }
 
 void Planner::set_refiner()
