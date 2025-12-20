@@ -84,10 +84,6 @@ int main(int argc, char *argv[])
       .help("whether to use Integer Linear Programming as the configuration generator")
       .default_value(false)
       .implicit_value(true);
-  program.add_argument("--ilp-log-timing")
-      .help("log per-call ILP timing")
-      .default_value(false)
-      .implicit_value(true);
   try {
     program.parse_known_args(argc, argv);
   } catch (const std::runtime_error &err) {
@@ -140,7 +136,6 @@ int main(int argc, char *argv[])
   Planner::CHECKPOINTS_DURATION =
       std::stof(program.get<std::string>("checkpoints-duration")) * 1000;
   Planner::USE_ILP = program.get<bool>("ilp");
-  Planner::ILP_LOG_TIMING = program.get<bool>("ilp-log-timing");
 
   // solve
   const auto deadline = Deadline(time_limit_sec * 1000);

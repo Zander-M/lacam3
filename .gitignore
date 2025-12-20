@@ -46,3 +46,4 @@ scen
 
 .vscode/*
 
+/ilp_models/*

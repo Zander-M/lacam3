@@ -27,6 +27,7 @@
 #include "translator.hpp"
 #include "utils.hpp"
 #include "ilp.hpp"
+#include <atomic>
 
 struct Planner {
   const Instance *ins;
@@ -80,7 +81,6 @@ struct Planner {
   static float RECURSIVE_RATE;
   static double RECURSIVE_TIME_LIMIT;
   static bool USE_ILP; // whether to use ILP low level configuration generator
-  static bool ILP_LOG_TIMING; // whether to log ILP timing per call
 
   // for logging
   static int CHECKPOINTS_DURATION;
@@ -89,6 +89,9 @@ struct Planner {
   int search_iter;
   int time_initial_solution;
   int cost_initial_solution;
+  int low_level_config_call_count;
+  int pibt_attempts;
+  int ilp_attempts;
   std::vector<int> checkpoints;
 
   Planner(const Instance *_ins, int _verbose = 0,

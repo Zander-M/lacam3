@@ -15,10 +15,10 @@ ILP::ILP(const Instance *_ins, DistTable *_D)
       env_ready(false),
       candidates(),
       visited_solutions(),
-      save_model(true),
+      save_model(false), // For debugging only
       model_dir("ilp_models"),
       model_serial(0),
-      log_timing(true),
+      log_timing(false),
       total_ms(0.0),
       last_ms(0.0),
       call_count(0)

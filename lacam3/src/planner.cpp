@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <atomic>
 
 bool Planner::FLG_SWAP = true;
 bool Planner::FLG_STAR = true;
@@ -17,7 +18,6 @@ bool Planner::FLG_RANDOM_INSERT_INIT_NODE = false;
 float Planner::RECURSIVE_RATE = 0.2;
 double Planner::RECURSIVE_TIME_LIMIT = 1000;
 bool Planner::USE_ILP = false;
-bool Planner::ILP_LOG_TIMING = false;
 
 std::string Planner::MSG;
 int Planner::CHECKPOINTS_DURATION = 5000;
@@ -49,6 +49,9 @@ Planner::Planner(const Instance *_ins, int _verbose, const Deadline *_deadline,
       search_iter(0),
       time_initial_solution(-1),
       cost_initial_solution(-1),
+      low_level_config_call_count(0),
+      pibt_attempts(0),
+      ilp_attempts(0),
       checkpoints()
 {
 }
@@ -116,7 +119,9 @@ Solution Planner::solve()
       time_initial_solution = elapsed_ms(deadline);
       cost_initial_solution = H->g;
       H_goal = H;
-      info(1, verbose, deadline, "found initial solution, cost: ", H_goal->g);
+      info(1, verbose, deadline, "found initial solution, cost: ", H_goal->g,
+           ", low-level config attempts: ", low_level_config_call_count,
+           " (PIBT: ", pibt_attempts, ", ILP: ", ilp_attempts, ")");
       if (!FLG_STAR) break;  // finish search
       set_refiner();         // refining start
       continue;
@@ -220,9 +225,11 @@ bool Planner::set_new_config(HNode *H, LNode *L, Config &Q_to)
    // worker-id, time -> configuration
     auto Q_cands = std::vector<Config>(PIBT_NUM, Config(N, nullptr));
     auto f_vals = std::vector<int>(PIBT_NUM, INT_MAX);
+    std::atomic<int> attempts_in_call(0);
 
     // parallel
     auto worker = [&](int k) {
+      attempts_in_call.fetch_add(1, std::memory_order_relaxed);
       // set constraints
       for (auto d = 0; d < L->depth; ++d) Q_cands[k][L->who[d]] = L->where[d];
       // PIBT
@@ -248,6 +255,10 @@ bool Planner::set_new_config(HNode *H, LNode *L, Config &Q_to)
       }
     }
 
+    const auto attempts = attempts_in_call.load(std::memory_order_relaxed);
+    pibt_attempts += attempts;
+    low_level_config_call_count += attempts;
+
     if (min_f_val < INT_MAX) {
       auto &Q_win = Q_cands[min_f_val_idx];
       std::copy(Q_win.begin(), Q_win.end(), Q_to.begin());
@@ -259,6 +270,8 @@ bool Planner::set_new_config(HNode *H, LNode *L, Config &Q_to)
     // ILP based configuration generator
     if (ilp == nullptr) return false;
     for (auto d = 0; d < L->depth; ++d) Q_to[L->who[d]] = L->where[d];
+    ++ilp_attempts;
+    ++low_level_config_call_count;
     return ilp->set_new_config(H->C, Q_to);
   }
 
@@ -330,7 +343,6 @@ void Planner::set_pibt()
 void Planner::set_ilp()
 {
   if (ilp == nullptr) ilp = new ILP(ins, D);
-  ilp->log_timing = ILP_LOG_TIMING;
 }
 
 void Planner::set_refiner()
@@ -392,6 +404,10 @@ void Planner::logging()
       "\ncomp_time_initial_solution=" + std::to_string(time_initial_solution);
   MSG += "\ncost_initial_solution=" + std::to_string(cost_initial_solution);
   MSG += "\nsearch_iteration=" + std::to_string(search_iter);
+  MSG += "\nlow_level_config_call_count=" +
+         std::to_string(low_level_config_call_count);
+  MSG += "\npibt_config_attempts=" + std::to_string(pibt_attempts);
+  MSG += "\nilp_config_attempts=" + std::to_string(ilp_attempts);
   MSG += "\nnum_high_level_node=" + std::to_string(HNode::COUNT);
   MSG += "\nnum_low_level_node=" + std::to_string(LNode::COUNT);
 
@@ -405,5 +421,7 @@ void Planner::logging()
     info(1, verbose, deadline, "timeout");
   }
   info(1, verbose, deadline, "search iteration:", search_iter,
-       "\texplored:", EXPLORED.size());
+       "\texplored:", EXPLORED.size(),
+       "\tlow-level config attempts:", low_level_config_call_count,
+       " (PIBT: ", pibt_attempts, ", ILP: ", ilp_attempts, ")");
 }
