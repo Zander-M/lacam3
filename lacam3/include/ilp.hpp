@@ -7,7 +7,13 @@
 #include "scatter.hpp"
 #include "utils.hpp"
 #include "gurobi_c++.h"
+#include <deque>
 #include <memory>
+
+struct CachedSolutions {
+  std::deque<Config> unexplored;
+};
+
 
 struct ILP{
   const Instance *ins;
@@ -25,6 +31,8 @@ struct ILP{
   struct StateKeyHasher {
     size_t operator()(const StateKey &key) const;
   };
+  std::unordered_map<StateKey, CachedSolutions, StateKeyHasher> 
+      cached_solutions;  // Caching solutions
   std::unordered_map<StateKey, std::vector<StateKey>, StateKeyHasher>
       visited_solutions;
   bool save_model;
@@ -33,12 +41,14 @@ struct ILP{
   bool log_timing;
   double total_ms;
   double last_ms;
+  int cache_size;
   int call_count;
 
   ILP(const Instance *_ins, DistTable *_D);
   ~ILP();
   bool set_new_config(const Config &Q_from, Config &Q_to);
   bool init_model_from_config(const Config &Q_from); // Create ILP problem
+  bool cache_solutions(const Config &Q_from, Config &Q_to);
   StateKey build_state_key(const Config &Q_from, const Config &Q_to) const;
   StateKey build_solution_key(const Config &Q_to) const;
 };

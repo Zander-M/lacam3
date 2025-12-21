@@ -14,6 +14,7 @@ ILP::ILP(const Instance *_ins, DistTable *_D)
       env(nullptr),
       env_ready(false),
       candidates(),
+      cached_solutions(),
       visited_solutions(),
       save_model(false), // For debugging only
       model_dir("ilp_models"),
@@ -21,6 +22,7 @@ ILP::ILP(const Instance *_ins, DistTable *_D)
       log_timing(false),
       total_ms(0.0),
       last_ms(0.0),
+      cache_size(20), // Solution Cache size
       call_count(0)
 {
   try {
@@ -77,7 +79,11 @@ bool ILP::init_model_from_config(const Config &Q_from)
   return true;
 }
 
-bool ILP::set_new_config(const Config &Q_from, Config &Q_to)
+/*
+  save solutions in cache 
+*/
+
+bool ILP::cache_solutions(const Config &Q_from, Config &Q_to)
 {
   if (!env_ready) return false;
   if (!init_model_from_config(Q_from)) return false;
@@ -86,6 +92,8 @@ bool ILP::set_new_config(const Config &Q_from, Config &Q_to)
     const auto t_start = std::chrono::steady_clock::now();
     const auto state_key = build_state_key(Q_from, Q_to);
     GRBModel model(*env);
+    model.set(GRB_IntParam_PoolSearchMode, 2);   // search for multiple sols
+    model.set(GRB_IntParam_PoolSolutions, cache_size);
     std::vector<std::vector<GRBVar>> x(N);
 
     // create variables and per-agent constraints
@@ -214,28 +222,52 @@ bool ILP::set_new_config(const Config &Q_from, Config &Q_to)
 
     model.optimize();
 
-    const int sol_count = model.get(GRB_IntAttr_SolCount);
+    const int sol_count =
+        std::min(model.get(GRB_IntAttr_SolCount), cache_size);
     if (sol_count == 0) return false;
 
-    // extract solution
-    for (size_t i = 0; i < N; ++i) {
-      bool assigned = false;
-      for (size_t k = 0; k < candidates[i].size(); ++k) {
-        if (x[i][k].get(GRB_DoubleAttr_X) > 0.5) {
-          Q_to[i] = candidates[i][k];
-          assigned = true;
+    auto &cache_queue = cached_solutions[state_key].unexplored;
+    cache_queue.clear();
+
+    auto &solutions = visited_solutions[state_key];
+    for (int s = 0; s < sol_count; ++s) {
+      model.set(GRB_IntParam_SolutionNumber, s);
+
+      Config sol(N, nullptr);
+      for (size_t i = 0; i < N; ++i) {
+        bool assigned = false;
+        for (size_t k = 0; k < candidates[i].size(); ++k) {
+          if (x[i][k].get(GRB_DoubleAttr_Xn) > 0.5) {
+            sol[i] = candidates[i][k];
+            assigned = true;
+            break;
+          }
+        }
+        if (!assigned) {
+          sol.clear();
           break;
         }
       }
-      if (!assigned) return false;
+
+      if (sol.size() != N) continue;
+
+      auto solution_key = build_solution_key(sol);
+      if (std::find(solutions.begin(), solutions.end(), solution_key) ==
+          solutions.end()) {
+        solutions.push_back(solution_key);
+      }
+
+      const auto cached_it = std::find_if(
+          cache_queue.begin(), cache_queue.end(),
+          [&](const Config &cfg) { return is_same_config(cfg, sol); });
+      if (cached_it == cache_queue.end()) {
+        cache_queue.push_back(sol);
+      }
     }
 
-    auto solution_key = build_solution_key(Q_to);
-    auto &solutions = visited_solutions[state_key];
-    if (std::find(solutions.begin(), solutions.end(), solution_key) ==
-        solutions.end()) {
-      solutions.push_back(std::move(solution_key));
-    }
+    if (cache_queue.empty()) return false;
+    Q_to = cache_queue.front();
+
     const auto t_end = std::chrono::steady_clock::now();
     last_ms =
         std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(
@@ -255,4 +287,30 @@ bool ILP::set_new_config(const Config &Q_from, Config &Q_to)
     std::cerr << "Unknown error while solving ILP." << std::endl;
     return false;
   }
+}
+
+/*
+  Return next config. If state is not explored, run ILP and cache solutions
+  Otherwise return cached solutions
+*/
+bool ILP::set_new_config(const Config &Q_from, Config &Q_to)
+{
+  if (!env_ready) return false;
+
+  const auto state_key = build_state_key(Q_from, Q_to);
+  auto cache_it = cached_solutions.find(state_key);
+
+  if (cache_it == cached_solutions.end() || cache_it->second.unexplored.empty()) {
+    if (!cache_solutions(Q_from, Q_to)) return false;
+    cache_it = cached_solutions.find(state_key);
+  }
+
+  if (cache_it == cached_solutions.end() || cache_it->second.unexplored.empty()) {
+    return false;
+  }
+
+  Q_to = cache_it->second.unexplored.front();
+  cache_it->second.unexplored.pop_front();
+
+  return true;
 }
