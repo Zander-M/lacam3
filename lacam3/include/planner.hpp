@@ -60,6 +60,7 @@ struct Planner {
   // for search utils
   std::deque<HNode *> OPEN;
   std::unordered_map<Config, HNode *, ConfigHasher> EXPLORED;
+  std::unordered_map<Config, int, ConfigHasher> VISIT_COUNT;
   HNode *H_init;  // start node
   HNode *H_goal;  // goal node
 

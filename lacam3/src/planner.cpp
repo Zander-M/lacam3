@@ -44,6 +44,7 @@ Planner::Planner(const Instance *_ins, int _verbose, const Deadline *_deadline,
       refiner_pool(),
       OPEN(),
       EXPLORED(),
+      VISIT_COUNT(),
       H_init(nullptr),
       H_goal(nullptr),
       search_iter(0),
@@ -80,8 +81,6 @@ Solution Planner::solve()
   else
     set_ilp(); // initialize ilp solver
 
-
-
   // search loop
   while (!OPEN.empty() && !is_expired(deadline)) {
     search_iter += 1;
@@ -107,6 +106,9 @@ Solution Planner::solve()
               ? H_init
               : OPEN[get_random_int(MT, 0, OPEN.size() - 1)];
     }
+
+    // count visit to the selected high-level node
+    VISIT_COUNT[H->C] += 1;
 
     // check lower bounds
     if (H_goal != nullptr && H->f >= H_goal->f) {
@@ -274,7 +276,6 @@ bool Planner::set_new_config(HNode *H, LNode *L, Config &Q_to)
     ++low_level_config_call_count;
     return ilp->set_new_config(H->C, Q_to);
   }
-
 }
 
 void Planner::rewrite(HNode *H_from, HNode *H_to)
@@ -410,6 +411,20 @@ void Planner::logging()
   MSG += "\nilp_config_attempts=" + std::to_string(ilp_attempts);
   MSG += "\nnum_high_level_node=" + std::to_string(HNode::COUNT);
   MSG += "\nnum_low_level_node=" + std::to_string(LNode::COUNT);
+
+  // calculate per visit count stats
+  if (!VISIT_COUNT.empty()) {
+    int max_visit = 0;
+    double total_visit = 0.0;
+    for (const auto &[key, count] : VISIT_COUNT) {
+      max_visit = std::max(count, max_visit);
+      total_visit += count;
+    }
+    double avg_visit = total_visit / VISIT_COUNT.size();
+
+    MSG += "\nmax_state_visit_count=" + std::to_string(max_visit);
+    MSG += "\navg_state_visit_count=" + std::to_string(avg_visit);
+  }
 
   if (H_goal != nullptr && OPEN.empty()) {
     info(1, verbose, deadline, "solved optimally, cost:", H_goal->g);
